@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App - {{ username }}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; display: flex; height: 100vh; background-color: #f0f2f5; }
+        .sidebar { width: 250px; background-color: #2c3e50; color: white; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; }
+        .sidebar h2 { margin-top: 0; color: #ecf0f1; }
+        .sidebar h3 { color: #bdc3c7; border-bottom: 1px solid #4a6572; padding-bottom: 5px; margin-top: 15px; }
+        .user-list { list-style-type: none; padding: 0; margin: 10px 0; flex-grow: 1; overflow-y: auto; }
+        .user-list li { padding: 8px 0; cursor: pointer; border-bottom: 1px solid #3a506b; }
+        .user-list li:last-child { border-bottom: none; }
+        .user-list li.online { color: #2ecc71; }
+        .user-list li.selected { background-color: #34495e; border-radius: 4px; padding-left: 5px; }
+
+        .chat-area { flex-grow: 1; display: flex; flex-direction: column; background-color: #ecf0f1; }
+        .chat-header { background-color: #3498db; color: white; padding: 15px; text-align: center; font-size: 1.2em; display: flex; justify-content: space-between; align-items: center; }
+        .chat-header button { background-color: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
+        .chat-header button:hover { background-color: #c0392b; }
+
+        .messages { flex-grow: 1; padding: 20px; overflow-y: auto; background-color: #fff; border-bottom: 1px solid #ddd; }
+        .message-bubble { background-color: #e0e0e0; padding: 10px; border-radius: 10px; margin-bottom: 10px; max-width: 70%; word-wrap: break-word; }
+        .message-bubble.sent { background-color: #dcf8c6; float: right; clear: both; }
+        .message-bubble.received { background-color: #e9ebee; float: left; clear: both; }
+        .message-bubble strong { display: block; margin-bottom: 5px; color: #333; }
+        .message-bubble small { display: block; text-align: right; font-size: 0.7em; color: #666; margin-top: 5px; }
+
+        .chat-input { display: flex; padding: 15px; background-color: #f4f4f4; border-top: 1px solid #ddd; }
+        .chat-input input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
+        .chat-input button { background-color: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+        .chat-input button:hover { background-color: #2980b9; }
+        .status-msg, .error-msg { margin-top: 10px; text-align: center; font-size: 0.9em; }
+        .status-msg { color: green; }
+        .error-msg { color: red; }
+        .message-bubble .timestamp {
+            font-size: 0.7em;
+            color: #888;
+            display: block; /* Agar di baris baru */
+            margin-top: 5px; /* Sedikit jarak dari pesan utama */
+            text-align: right; /* Agar timestamp rata kanan di bubble */
+        }
+
+        .message-bubble.sent .timestamp {
+            text-align: right; /* Pastikan rata kanan untuk pesan terkirim */
+        }
+
+        .message-bubble.received .timestamp {
+            text-align: left; /* Pastikan rata kiri untuk pesan diterima */
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Halo, {{ username }}!</h2>
+        <a href="/logout"><button>Logout</button></a>
+
+        <h3>Online Users</h3>
+        <ul id="online-users" class="user-list">
+            </ul>
+        <h3>All Users</h3>
+        <ul id="all-users" class="user-list">
+            </ul>
+    </div>
+
+    <div class="chat-area">
+        <div class="chat-header">
+            <span id="current-chat-user">Pilih Pengguna untuk Chat</span>
+        </div>
+        <div class="messages" id="messages">
+            </div>
+        <div class="chat-input">
+            <input type="text" id="message-input" placeholder="Ketik pesan Anda...">
+            <button id="send-button" disabled>Kirim</button>
+        </div>
+        <p id="status-message" class="status-msg"></p>
+        <p id="error-message" class="error-msg"></p>
+    </div>
+
+    <script>
+        // --- SUBSTITUTION CIPHER (Harus SAMA dengan Backend) ---
+        const KEY = {
+            'A': 'Q', 'B': 'W', 'C': 'E', 'D': 'R', 'E': 'T', 'F': 'Y', 'G': 'U', 'H': 'I', 'I': 'O', 'J': 'P',
+            'K': 'A', 'L': 'S', 'M': 'D', 'N': 'F', 'O': 'G', 'P': 'H', 'Q': 'J', 'R': 'K', 'S': 'L', 'T': 'Z',
+            'U': 'X', 'V': 'C', 'W': 'V', 'X': 'B', 'Y': 'N', 'Z': 'M',
+            'a': 'q', 'b': 'w', 'c': 'e', 'd': 'r', 'e': 't', 'f': 'y', 'g': 'u', 'h': 'i', 'i': 'o', 'j': 'p',
+            'k': 'a', 'l': 's', 'm': 'd', 'n': 'f', 'o': 'g', 'p': 'h', 'q': 'j', 'r': 'k', 's': 'l', 't': 'z',
+            'u': 'x', 'v': 'c', 'w': 'v', 'x': 'b', 'y': 'n', 'z': 'm',
+            '0': '5', '1': '6', '2': '7', '3': '8', '4': '9', '5': '0', '6': '1', '7': '2', '8': '3', '9': '4',
+            ' ': '#', '.': '@', ',': '$', '?': '%'
+        };
+        const DECRYPT_KEY = {};
+        for (const k in KEY) {
+            DECRYPT_KEY[KEY[k]] = k;
+        }
+
+        function encryptMessage(message) {
+            let encryptedText = "";
+            for (const char of message) {
+                encryptedText += KEY[char] || char;
+            }
+            return encryptedText;
+        }
+
+        function decryptMessage(encryptedMessage) {
+            let decryptedText = "";
+            for (const char of encryptedMessage) {
+                decryptedText += DECRYPT_KEY[char] || char;
+            }
+            return decryptedText;
+        }
+
+        // --- Logika Klien Socket.IO ---
+        const socket = io();
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const onlineUsersList = document.getElementById('online-users');
+        const allUsersList = document.getElementById('all-users');
+        const currentChatUserSpan = document.getElementById('current-chat-user');
+        const statusMessageP = document.getElementById('status-message');
+        const errorMessageP = document.getElementById('error-message');
+        
+
+        let selectedReceiver = null; // Username penerima yang sedang dipilih
+
+        function displayMessage(sender, msg, timestamp, type = 'received') {
+            console.log(`[DEBUG CLIENT] displayMessage dipanggil. Sender: ${sender}, Timestamp: ${timestamp}, Type: ${type}`); // <<< DEBUG LOG
+            
+            const bubble = document.createElement('div');
+            bubble.classList.add('message-bubble', type);
+            
+            const content = document.createElement('p');
+            content.innerHTML = `<strong>${sender}</strong><br>${decryptMessage(msg)}<br><small class="timestamp">${timestamp}</small>`; 
+            
+            const encryptedRaw = document.createElement('small');
+            encryptedRaw.textContent = `(Enkripsi: ${msg})`;
+            bubble.appendChild(content); 
+            bubble.appendChild(encryptedRaw);
+            messagesDiv.appendChild(bubble);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function showStatus(message, isError = false) {
+            if (isError) {
+                errorMessageP.textContent = message;
+                statusMessageP.textContent = '';
+            } else {
+                statusMessageP.textContent = message;
+                errorMessageP.textContent = '';
+            }
+            setTimeout(() => {
+                statusMessageP.textContent = '';
+                errorMessageP.textContent = '';
+            }, 3000);
+        }
+
+        // Event saat terhubung ke Socket.IO
+        socket.on('connect', () => {
+            console.log('Terhubung ke server Socket.IO');
+            socket.emit('request_users');
+        });
+
+        // Event saat menerima update daftar pengguna online
+        socket.on('user_list_update', (onlineUsers) => {
+            console.log('Online users updated:', onlineUsers);
+            onlineUsersList.innerHTML = '';
+            onlineUsers.forEach(user => {
+                if (user !== "{{ username }}") {
+                    const li = document.createElement('li');
+                    li.textContent = user + " (online)";
+                    li.classList.add('online');
+                    if (selectedReceiver === user) {
+                        li.classList.add('selected');
+                    }
+                    li.onclick = () => selectReceiver(user);
+                    onlineUsersList.appendChild(li);
+                }
+            });
+        });
+
+        // Event saat menerima daftar semua pengguna
+        socket.on('all_users_list', (allUsers) => {
+            console.log('All users list:', allUsers);
+            allUsersList.innerHTML = '';
+            allUsers.forEach(user => {
+                if (user !== "{{ username }}") {
+                    const li = document.createElement('li');
+                    li.textContent = user;
+                    if (onlineUsersList.querySelector(`li.online`) && onlineUsersList.querySelector(`li.online`).textContent.includes(user)) {
+                           // Already handled by online list
+                    } else {
+                        if (selectedReceiver === user) {
+                            li.classList.add('selected');
+                        }
+                        li.onclick = () => selectReceiver(user);
+                        allUsersList.appendChild(li);
+                    }
+                }
+            });
+        });
+
+        // Event saat menerima pesan chat
+        socket.on('msg_received', (data) => {
+            console.log('[DEBUG CLIENT] Event msg_received diterima:', data); // <<< DEBUG LOG
+            const sender = data.sender;
+            const encryptedMsg = data.encrypted_msg;
+            const timestamp = data.timestamp; // <<< AMBIL timestamp dari data
+
+            // --- TAMBAH DEBUGGING UNTUK MEMASTIKAN timestamp TIDAK undefined ---
+            if (typeof timestamp === 'undefined' || timestamp === null) {
+                console.error('[DEBUG CLIENT ERROR] Timestamp tidak ditemukan dalam data yang diterima!');
+            }
+            // --- AKHIR DEBUGGING ---
+
+            if (sender === selectedReceiver) {
+                displayMessage(sender, encryptedMsg, timestamp, 'received'); // <<< PASANG timestamp ke fungsi
+            } else {
+                showStatus(`Pesan baru dari ${sender}!`);
+            }
+        });
+
+        // Event saat menerima pesan status dari server
+        socket.on('status_message', (message) => {
+            showStatus(message);
+        });
+
+        // Event saat menerima pesan error dari server
+        socket.on('error', (message) => {
+            showStatus(message, true);
+        });
+
+        // Fungsi untuk memilih penerima
+        function selectReceiver(username) {
+            selectedReceiver = username;
+            currentChatUserSpan.textContent = `Chat dengan: ${username}`;
+            sendButton.disabled = false;
+
+            document.querySelectorAll('.user-list li').forEach(item => {
+                item.classList.remove('selected');
+            });
+            const selectedLi = document.querySelector(`.user-list li[onclick*="${username}"]`);
+            if (selectedLi) {
+                selectedLi.classList.add('selected');
+            }
+            messagesDiv.innerHTML = ''; // Kosongkan riwayat chat (untuk demo ini)
+            showStatus(`Anda sekarang chat dengan ${username}`);
+        }
+
+        // Kirim pesan saat tombol diklik atau Enter ditekan
+        sendButton.addEventListener('click', () => {
+            sendMessage();
+        });
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        socket.on('disconnect', () => {
+            console.log('Koneksi Socket.IO terputus. Mengarahkan ke halaman login...');
+            showStatus('Koneksi terputus. Silakan login kembali.', true);
+            setTimeout(() => {
+                window.location.href = '/logout';
+            }, 1000);
+        });
+
+        // Event ketika server secara eksplisit memaksa klien untuk logout (misal sesi tidak valid)
+        socket.on('force_logout', (data) => {
+            console.log('Server meminta logout paksa:', data.message);
+            showStatus(data.message || 'Sesi Anda tidak valid. Silakan login kembali.', true);
+            setTimeout(() => {
+                window.location.href = '/logout';
+            }, 1000);
+        });
+
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message && selectedReceiver) {
+                const encryptedMessage = encryptMessage(message);
+                
+                const now = new Date();
+                const currentTimestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}`;
+                
+                socket.emit('send_message', {
+                    receiver_username: selectedReceiver,
+                    encrypted_message: encryptedMessage
+                });
+                displayMessage("Saya", encryptedMessage, currentTimestamp, 'sent');
+                messageInput.value = '';
+            } else if (!selectedReceiver) {
+                showStatus("Pilih pengguna terlebih dahulu!", true);
+            }
+        }
+        
+    </script>
+</body>
+</html>
