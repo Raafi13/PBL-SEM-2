@@ -4,13 +4,36 @@ const socket = io();
 const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const sendButton = document.getElementById('send-button');
-const onlineUsersList = document.getElementById('online-users');
-const allUsersList = document.getElementById('all_users');
+const onlineUsersList = document.getElementById('online-users'); // Correct ID
+const allUsersList = document.getElementById('all-users'); // Corrected ID from 'all_users' to 'all-users'
 const currentChatUserSpan = document.getElementById('current-chat-user');
 const statusMessageP = document.getElementById('status-message');
 const errorMessageP = document.getElementById('error-message');
 
+// Pastikan elemen ini ada di HTML Anda, seperti yang ditambahkan di atas.
+const currentLoggedInUserElement = document.getElementById('logged-in-username');
+let currentLoggedInUser = null;
+if (currentLoggedInUserElement) {
+    currentLoggedInUser = currentLoggedInUserElement.dataset.username;
+} else {
+    console.error("Elemen 'logged-in-username' tidak ditemukan di HTML.");
+    // Handle this error appropriately, perhaps redirect to login or show an error.
+}
+
+
 let selectedReceiver = null; // Username penerima yang sedang dipilih
+
+// Fungsi sederhana untuk enkripsi/dekripsi (Anda bisa mengganti ini dengan implementasi yang lebih kuat)
+function encryptMessage(message) {
+    // Contoh sederhana: reverse string
+    return message.split('').reverse().join('');
+}
+
+function decryptMessage(encryptedMessage) {
+    // Contoh sederhana: reverse string kembali
+    return encryptedMessage.split('').reverse().join('');
+}
+
 
 function displayMessage(sender, msg, timestamp, type = 'received') {
     console.log(`[DEBUG CLIENT] displayMessage dipanggil. Sender: ${sender}, Timestamp: ${timestamp}, Type: ${type}`); 
@@ -19,8 +42,8 @@ function displayMessage(sender, msg, timestamp, type = 'received') {
     bubble.classList.add('message-bubble', type);
     
     const content = document.createElement('p');
-    const currentLoggedInUser = document.getElementById('logged-in-username').dataset.username;
-    const displaySender = (sender === currentLoggedInUser && type === 'sent') ? "Anda" : sender;
+    // Jika pengirim adalah pengguna yang sedang login, tampilkan "Anda"
+    const displaySender = (sender === currentLoggedInUser) ? "Anda" : sender;
     content.innerHTML = `<strong>${displaySender}</strong><br>${decryptMessage(msg)}<br><small class="timestamp">${timestamp}</small>`; 
     
     const encryptedRaw = document.createElement('small');
@@ -50,17 +73,16 @@ function showStatus(message, isError = false) {
 
 socket.on('connect', () => {
     console.log('Terhubung ke server Socket.IO');
-    socket.emit('request_users');
-    selectedReceiver = null; // Reset this on new connection
+    socket.emit('request_users'); // Minta daftar semua user dan user online
+    // selectedReceiver = null; // Ini mungkin tidak perlu direset total, tergantung UI flow Anda
 });
 
 socket.on('user_list_update', (onlineUsers) => {
-    console.log('Online users updated:', onlineUsers);
-    onlineUsersList.innerHTML = '';
-    const currentLoggedInUser = document.getElementById('logged-in-username').dataset.username; 
-    
-    let firstSelectableUser = null;
-    
+    console.log('[DEBUG CLIENT] Online users updated:', onlineUsers);
+    onlineUsersList.innerHTML = ''; // Bersihkan daftar online
+
+    let firstSelectableUser = null; // Untuk auto-select
+
     onlineUsers.forEach(user => {
         if (user !== currentLoggedInUser) {
             const li = document.createElement('li');
@@ -72,53 +94,58 @@ socket.on('user_list_update', (onlineUsers) => {
             li.onclick = () => selectReceiver(user);
             onlineUsersList.appendChild(li);
 
-            if (!firstSelectableUser) {
+            if (!firstSelectableUser && selectedReceiver === null) { // Hanya pilih jika belum ada yang terpilih
                 firstSelectableUser = user;
             }
         }
     });
 
-    if (!selectedReceiver && firstSelectableUser) {
+    // Coba auto-select hanya jika belum ada yang terpilih
+    if (selectedReceiver === null && firstSelectableUser) {
         console.log(`[DEBUG CLIENT] Auto-selecting first online user: ${firstSelectableUser}`);
         selectReceiver(firstSelectableUser);
     }
+
+    // Setelah memperbarui daftar online, minta daftar semua pengguna lagi
+    // Ini membantu memastikan daftar 'All Users' juga diperbarui dengan status online terbaru
+    socket.emit('request_users'); 
 });
 
-socket.on('all_users_list', (allUsers) => {
-    console.log('All users list received:', allUsers);
-    allUsersList.innerHTML = '';
-    const currentLoggedInUser = document.getElementById('logged-in-username').dataset.username;
 
-    let firstSelectableUserFromAll = null; // Gunakan variabel berbeda agar tidak bentrok dengan online
+socket.on('all_users_list', (allUsers) => {
+    console.log('[DEBUG CLIENT] All users list received:', allUsers);
+    allUsersList.innerHTML = ''; // Bersihkan daftar semua pengguna
+    
+    // Dapatkan daftar username yang sedang online dari DOM
+    const currentlyOnlineUsersInDOM = Array.from(onlineUsersList.children)
+                                      .map(li => li.textContent.replace(' (online)', ''));
+
+    let firstSelectableUserFromAll = null; 
 
     allUsers.forEach(user => {
         if (user !== currentLoggedInUser) {
-            const isOnline = Array.from(onlineUsersList.children).some(item => item.textContent.includes(user));
+            // Cek apakah user ini sudah ada di daftar online yang baru saja di-render
+            const isOnline = currentlyOnlineUsersInDOM.includes(user);
             
             if (!isOnline) { // Hanya tambahkan jika belum ada di daftar online
                 const li = document.createElement('li');
-                li.textContent = user;
+                li.textContent = user; // Tidak perlu "(offline)" karena defaultnya memang offline jika tidak di list online
                 if (selectedReceiver === user) {
                     li.classList.add('selected');
                 }
                 li.onclick = () => selectReceiver(user);
                 allUsersList.appendChild(li);
-            }
 
-            // Jika belum ada user yang terpilih, dan belum ada user dari online_users_list yang dipilih,
-            // maka ambil user ini sebagai kandidat auto-select
-            // Penting: hanya jika selectedReceiver masih null DAN (firstSelectableUser dari online_users_list juga null ATAU sudah diproses)
-            if (!selectedReceiver && !document.querySelector('#online-users li.selected')) { 
-                if (!firstSelectableUserFromAll) {
+                if (!firstSelectableUserFromAll && selectedReceiver === null) {
                     firstSelectableUserFromAll = user;
                 }
             }
         }
     });
 
-    // Panggil auto-select jika belum ada yang terpilih sama sekali, dan ada kandidat dari all_users
-    // Ini akan dieksekusi hanya jika auto-select dari user_list_update tidak menemukan siapa pun
-    if (!selectedReceiver && firstSelectableUserFromAll) {
+    // Auto-select dari 'All Users' hanya jika belum ada yang terpilih sama sekali
+    // dan auto-select dari 'Online Users' tidak menemukan siapa pun.
+    if (selectedReceiver === null && firstSelectableUserFromAll && !document.querySelector('#online-users li.selected')) {
         console.log(`[DEBUG CLIENT] Auto-selecting first available user from all users list: ${firstSelectableUserFromAll}`);
         selectReceiver(firstSelectableUserFromAll);
     }
@@ -134,15 +161,14 @@ socket.on('msg_received', (data) => {
         console.error('[DEBUG CLIENT ERROR] Timestamp tidak ditemukan dalam data yang diterima untuk pesan real-time!');
     }
 
-    const currentLoggedInUser = document.getElementById('logged-in-username').dataset.username;
-    // Tampilkan jika pengirim adalah lawan chat yang sedang aktif
-    // ATAU jika itu pesan yang baru saja kita kirim (konfirmasi dari server)
+    // Jika pengirim adalah lawan chat yang sedang aktif, atau pesan adalah dari diri sendiri ke lawan chat aktif
     if (sender === selectedReceiver) {
         displayMessage(sender, encryptedMsg, timestamp, 'received');
     } else if (sender === currentLoggedInUser && data.receiver === selectedReceiver) {
         // Ini adalah pesan yang baru saja kita kirim, server mengirimnya kembali ke kita juga.
-        // Hanya tampilkan jika kita sedang chat dengan receiver tersebut.
-        displayMessage("Anda", encryptedMsg, timestamp, 'sent');
+        // Seharusnya sudah ditampilkan oleh sendMessage, jadi ini bisa diabaikan atau sebagai fallback
+        // displayMessage("Anda", encryptedMsg, timestamp, 'sent');
+        console.log("[DEBUG CLIENT] Pesan sendiri ke selectedReceiver, mungkin duplikat. Abaikan.");
     } else {
         // Pesan masuk dari orang lain yang tidak sedang dalam chat aktif
         showStatus(`Pesan baru dari ${sender}!`);
@@ -166,7 +192,6 @@ socket.on('chat_history', (history) => {
         noHistory.textContent = "Tidak ada riwayat chat dengan pengguna ini.";
         messagesDiv.appendChild(noHistory);
     } else {
-        const currentLoggedInUser = document.getElementById('logged-in-username').dataset.username;
         history.forEach(msg => {
             const sender = msg.sender;
             const encryptedMsg = msg.encrypted_msg;
@@ -179,7 +204,6 @@ socket.on('chat_history', (history) => {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 });
 
-
 function selectReceiver(username) {
     console.log(`[DEBUG CLIENT] Memilih penerima: ${username}`);
     selectedReceiver = username;
@@ -187,15 +211,18 @@ function selectReceiver(username) {
     sendButton.disabled = false;
     messageInput.focus();
 
+    // Hapus kelas 'selected' dari semua daftar pengguna
     document.querySelectorAll('.user-list li').forEach(item => {
         item.classList.remove('selected');
     });
-    const selectedLi = document.querySelector(`#online-users li[onclick*="${username}"], #all_users li[onclick*="${username}"]`);
-    if (selectedLi) {
-        selectedLi.classList.add('selected');
-    }
+    // Tambahkan kelas 'selected' ke LI yang dipilih
+    // Gunakan querySelectorAll untuk mencakup kedua list dan ambil yang pertama jika ada duplikat
+    const selectedLiElements = document.querySelectorAll(`#online-users li[onclick*="${username}"], #all-users li[onclick*="${username}"]`);
+    selectedLiElements.forEach(li => {
+        li.classList.add('selected');
+    });
     
-    messagesDiv.innerHTML = '';
+    messagesDiv.innerHTML = ''; // Bersihkan pesan saat ganti chat
     showStatus(`Anda sekarang chat dengan ${username}`);
 
     socket.emit('request_chat_history', { target_username: username });
@@ -207,7 +234,7 @@ sendButton.addEventListener('click', () => {
 
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
-        e.preventDefault();
+        e.preventDefault(); // Mencegah form submit default jika ada
         sendMessage();
     }
 });
@@ -239,10 +266,13 @@ function sendMessage() {
         socket.emit('send_message', {
             receiver_username: selectedReceiver,
             encrypted_message: encryptedMessage,
-            timestamp: currentTimestamp
+            // Timestamp ini hanya untuk tampilan sementara di sisi pengirim.
+            // Server akan menyimpan dan mengembalikan timestamp dari DB.
+            timestamp: currentTimestamp 
         });
         
-        displayMessage("Saya", encryptedMessage, currentTimestamp, 'sent');
+        // Tampilkan pesan yang baru dikirim di UI pengirim secara instan
+        displayMessage(currentLoggedInUser, encryptedMessage, currentTimestamp, 'sent');
         messageInput.value = '';
     } else if (!selectedReceiver) {
         showStatus("Pilih pengguna terlebih dahulu!", true);
@@ -250,3 +280,9 @@ function sendMessage() {
         showStatus("Pesan tidak boleh kosong!", true);
     }
 }
+
+// Pastikan skrip ini dijalankan setelah DOM sepenuhnya dimuat
+document.addEventListener('DOMContentLoaded', () => {
+    // Meminta daftar pengguna saat DOM dimuat
+    socket.emit('request_users');
+});

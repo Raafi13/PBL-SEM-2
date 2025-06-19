@@ -1,46 +1,310 @@
-/* static/css/style.css */
+/* static/css/style.css - Styling for the Chat Interface */
 
-body { font-family: Arial, sans-serif; margin: 0; display: flex; height: 100vh; background-color: #f0f2f5; }
-.sidebar { width: 250px; background-color: #2c3e50; color: white; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; }
-.sidebar h2 { margin-top: 0; color: #ecf0f1; }
-.sidebar h3 { color: #bdc3c7; border-bottom: 1px solid #4a6572; padding-bottom: 5px; margin-top: 15px; }
-.user-list { list-style-type: none; padding: 0; margin: 10px 0; flex-grow: 1; overflow-y: auto; }
-.user-list li { padding: 8px 0; cursor: pointer; border-bottom: 1px solid #3a506b; }
-.user-list li:last-child { border-bottom: none; }
-.user-list li.online { color: #2ecc71; }
-.user-list li.selected { background-color: #34495e; border-radius: 4px; padding-left: 5px; }
-
-.chat-area { flex-grow: 1; display: flex; flex-direction: column; background-color: #ecf0f1; }
-.chat-header { background-color: #3498db; color: white; padding: 15px; text-align: center; font-size: 1.2em; display: flex; justify-content: space-between; align-items: center; }
-.chat-header button { background-color: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
-.chat-header button:hover { background-color: #c0392b; }
-
-.messages { flex-grow: 1; padding: 20px; overflow-y: auto; background-color: #fff; border-bottom: 1px solid #ddd; }
-.message-bubble { background-color: #e0e0e0; padding: 10px; border-radius: 10px; margin-bottom: 10px; max-width: 70%; word-wrap: break-word; }
-.message-bubble.sent { background-color: #dcf8c6; float: right; clear: both; }
-.message-bubble.received { background-color: #e9ebee; float: left; clear: both; }
-.message-bubble strong { display: block; margin-bottom: 5px; color: #333; }
-.message-bubble small { display: block; text-align: right; font-size: 0.7em; color: #666; margin-top: 5px; }
-
-.chat-input { display: flex; padding: 15px; background-color: #f4f4f4; border-top: 1px solid #ddd; }
-.chat-input input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
-.chat-input button { background-color: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
-.chat-input button:hover { background-color: #2980b9; }
-.status-msg, .error-msg { margin-top: 10px; text-align: center; font-size: 0.9em; }
-.status-msg { color: green; }
-.error-msg { color: red; }
-.message-bubble .timestamp {
-    font-size: 0.7em;
-    color: #888;
-    display: block;
-    margin-top: 5px;
-    text-align: right;
+body {
+    font-family: 'Inter', Arial, sans-serif; /* Menggunakan Inter sebagai font default */
+    margin: 0;
+    display: flex;
+    height: 100vh; /* Memastikan tinggi viewport penuh */
+    background-color: #f0f2f5;
+    overflow: hidden; /* Mencegah scroll body */
 }
 
-.message-bubble.sent .timestamp {
-    text-align: right;
+/* Sidebar Styling */
+.sidebar {
+    width: 280px; /* Sedikit lebih lebar */
+    background-color: #2c3e50;
+    color: white;
+    padding: 20px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.2); /* Bayangan sedikit */
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+}
+
+.sidebar h2 {
+    margin-top: 0;
+    color: #ecf0f1;
+    font-size: 1.8em;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.sidebar h3 {
+    color: #bdc3c7;
+    border-bottom: 1px solid #4a6572;
+    padding-bottom: 8px;
+    margin-top: 25px;
+    font-size: 1.1em;
+}
+
+.sidebar a button {
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 8px; /* Lebih bulat */
+    cursor: pointer;
+    font-size: 1em;
+    width: 100%;
+    transition: background-color 0.3s ease;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.sidebar a button:hover {
+    background-color: #c0392b;
+    box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+}
+
+.user-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 10px 0;
+    flex-grow: 1;
+    overflow-y: auto; /* Bisa discroll jika banyak user */
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.user-list::-webkit-scrollbar {
+    display: none;
+}
+
+.user-list li {
+    padding: 10px 12px; /* Padding lebih banyak */
+    cursor: pointer;
+    border-radius: 8px; /* Sudut membulat */
+    margin-bottom: 5px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    display: flex;
+    align-items: center;
+}
+
+.user-list li:hover {
+    background-color: #34495e;
+    color: #fff;
+}
+
+.user-list li.online {
+    color: #2ecc71; /* Warna hijau untuk online */
+    font-weight: bold;
+}
+
+.user-list li.selected {
+    background-color: #3498db; /* Warna biru untuk yang terpilih */
+    color: white;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+/* Chat Area Styling */
+.chat-area {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #ecf0f1;
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+    margin-left: 10px; /* Jarak dari sidebar */
+    box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+}
+
+.chat-header {
+    background-color: #3498db;
+    color: white;
+    padding: 15px 20px;
+    text-align: center;
+    font-size: 1.4em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top-left-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+#current-chat-user {
+    flex-grow: 1;
+    text-align: center;
+}
+
+/* Messages Display Area */
+.messages {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto; /* Scrollable */
+    background-color: #fff;
+    border-bottom: 1px solid #ddd;
+    display: flex; /* Untuk menempatkan bubble di awal/akhir */
+    flex-direction: column;
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.messages::-webkit-scrollbar {
+    display: none;
+}
+
+.message-bubble {
+    background-color: #e0e0e0;
+    padding: 12px 15px; /* Padding lebih nyaman */
+    border-radius: 18px; /* Lebih membulat */
+    margin-bottom: 10px;
+    max-width: 65%; /* Lebar max disesuaikan */
+    word-wrap: break-word;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.message-bubble.sent {
+    background-color: #dcf8c6; /* Warna hijau muda */
+    align-self: flex-end; /* Pesan terkirim di kanan */
+    border-bottom-right-radius: 4px; /* Sudut lancip di pojok kanan bawah */
+}
+
+.message-bubble.received {
+    background-color: #e9ebee; /* Warna abu-abu muda */
+    align-self: flex-start; /* Pesan diterima di kiri */
+    border-bottom-left-radius: 4px; /* Sudut lancip di pojok kiri bawah */
+}
+
+.message-bubble strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #333;
+    font-size: 0.95em;
+}
+
+.message-bubble .timestamp {
+    font-size: 0.7em;
+    color: #666;
+    display: block;
+    margin-top: 5px;
+    text-align: right; /* Default ke kanan */
 }
 
 .message-bubble.received .timestamp {
-    text-align: left;
+    text-align: left; /* Timestamp pesan diterima di kiri */
+}
+
+/* Chat Input Area */
+.chat-input {
+    display: flex;
+    padding: 15px;
+    background-color: #f4f4f4;
+    border-top: 1px solid #ddd;
+    border-bottom-left-radius: 10px;
+}
+
+.chat-input input[type="text"] {
+    flex-grow: 1;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 25px; /* Pill shape */
+    margin-right: 10px;
+    font-size: 1em;
+    outline: none;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.chat-input input[type="text"]:focus {
+    border-color: #3498db;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1), 0 0 5px rgba(52, 152, 219, 0.5);
+}
+
+.chat-input button {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 25px; /* Pill shape */
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.chat-input button:hover:not(:disabled) {
+    background-color: #2980b9;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+}
+
+.chat-input button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Status and Error Messages */
+.status-msg, .error-msg {
+    margin: 10px 0;
+    text-align: center;
+    font-size: 0.9em;
+    padding: 5px 10px;
+    border-radius: 5px;
+}
+
+.status-msg {
+    color: #27ae60;
+    background-color: #e8f8f5;
+}
+
+.error-msg {
+    color: #c0392b;
+    background-color: #fdedec;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    body {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: auto;
+        padding: 15px;
+        border-radius: 0;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    .sidebar h2, .sidebar h3 {
+        text-align: left;
+    }
+
+    .user-list {
+        display: flex; /* Untuk horizontal scroll di mobile */
+        overflow-x: auto;
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    .user-list li {
+        flex: 0 0 auto; /* Jangan biarkan item user mengecil */
+        margin-right: 10px;
+        margin-bottom: 0;
+    }
+
+    .chat-area {
+        margin-left: 0;
+        border-radius: 0;
+        flex-grow: 1; /* Agar mengambil sisa ruang */
+    }
+
+    .chat-header {
+        font-size: 1.1em;
+        padding: 12px 15px;
+        border-radius: 0;
+    }
+
+    .messages {
+        padding: 15px;
+    }
+
+    .chat-input {
+        padding: 10px;
+        border-radius: 0;
+    }
 }

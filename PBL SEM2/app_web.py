@@ -6,7 +6,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # --- KONFIGURASI APLIKASI & DATABASE ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'kunci_rahasia_super_aman_ini_harus_diganti_di_produksi'
+app.config['SECRET_KEY'] = 'PBL-RKS-209 '
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 DB_CONFIG = {
@@ -35,6 +35,9 @@ def register_user(username, password):
         return True
     except mysql.connector.Error as err:
         print(f"[DB ERROR] Pendaftaran gagal: {err}")
+        # Check if error is due to duplicate entry (e.g., for unique username constraint)
+        if err.errno == 1062: # MySQL error code for duplicate entry
+            print(f"[DB ERROR] Username '{username}' already exists.")
         return False
     finally:
         cursor.close()
@@ -79,14 +82,17 @@ def get_username_by_id(user_id):
 def save_message(sender_id, receiver_id, encrypted_message):
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Hapus 'timestamp' dari daftar kolom dan '%s' terakhir dari VALUES
-    sql = "INSERT INTO messages (sender_id, receiver_id, encrypted_message) VALUES (%s, %s, %s)"
-    # Hapus datetime.now() dari tuple parameter
-    cursor.execute(sql, (sender_id, receiver_id, encrypted_message))
-    conn.commit()
-    print(f"[DB] Pesan dari {sender_id} ke {receiver_id} disimpan.")
-    cursor.close()
-    conn.close()
+    try:
+        # Assuming 'timestamp' column in 'messages' table has a default value like CURRENT_TIMESTAMP
+        sql = "INSERT INTO messages (sender_id, receiver_id, encrypted_message) VALUES (%s, %s, %s)"
+        cursor.execute(sql, (sender_id, receiver_id, encrypted_message))
+        conn.commit()
+        print(f"[DB] Pesan dari {sender_id} ke {receiver_id} disimpan.")
+    except mysql.connector.Error as err:
+        print(f"[DB ERROR] Gagal menyimpan pesan: {err}")
+    finally:
+        cursor.close()
+        conn.close()
 
 # --- NEW: Fungsi untuk mengambil riwayat chat dari database ---
 def get_chat_history_from_db(user1_id, user2_id):
@@ -105,12 +111,12 @@ def get_chat_history_from_db(user1_id, user2_id):
         history = []
         for row in cursor.fetchall():
             sender_id_msg = row[0]
-            # receiver_id_msg = row[1] # Tidak dipakai langsung di sini
+            # receiver_id_msg = row[1] # Not directly used here
             encrypted_msg = row[2]
-            timestamp_dt = row[3] # Objek datetime
+            timestamp_dt = row[3] # datetime object
             
             sender_username_msg = get_username_by_id(sender_id_msg)
-            # receiver_username_msg = get_username_by_id(receiver_id_msg) # Tidak dipakai langsung di sini
+            # receiver_username_msg = get_username_by_id(receiver_id_msg) # Not directly used here
 
             # Format timestamp ke string yang konsisten dengan yang di-emit
             timestamp_str = timestamp_dt.strftime("%H:%M:%S %d-%m-%Y")
@@ -165,14 +171,18 @@ def register():
         if register_user(username, password):
             return redirect(url_for('login', success="Registrasi berhasil! Silakan login."))
         else:
-            return render_template('register.html', error="Username sudah ada atau terjadi kesalahan")
+            # More specific error message for duplicate username
+            return render_template('register.html', error="Username sudah ada atau terjadi kesalahan lain.")
     return render_template('register.html')
 
 @app.route('/logout')
 def logout():
     username = session.pop('username', None)
-    if username in online_users:
-        del online_users[username]
+    if username: # Only attempt to remove if username was in session
+        if username in online_users:
+            # Before deleting, ensure the user leaves their room
+            leave_room(username, sid=online_users[username]) 
+            del online_users[username]
     session.pop('user_id', None)
     socketio.emit('user_list_update', list(online_users.keys()))
     print(f"[LOGOUT] {username} logged out. online_users: {online_users}")
@@ -204,13 +214,14 @@ def handle_connect():
         user_id = session['user_id']
         sid = request.sid
         
-        # Cek jika pengguna sudah online dengan SID lain
-        if username in online_users:
+        # If the user is already online with a different SID, force logout the old one
+        if username in online_users and online_users[username] != sid:
             old_sid = online_users[username]
-            if old_sid != sid:
-                # Opsional: Kirim pesan ke SID lama atau putuskan
-                socketio.emit('force_logout', {'message': 'Anda login di tempat lain.'}, room=old_sid)
-                print(f"[SOCKETIO] SID lama untuk {username} ({old_sid}) ditimpa oleh SID baru ({sid}).")
+            # Emit a message to the old SID to inform them of being logged out
+            socketio.emit('force_logout', {'message': 'Anda login di tempat lain. Sesi lama Anda telah diakhiri.'}, room=old_sid)
+            # Remove the old SID from the room and online_users
+            leave_room(username, sid=old_sid)
+            print(f"[SOCKETIO] SID lama untuk {username} ({old_sid}) ditimpa oleh SID baru ({sid}).")
 
         online_users[username] = sid
         join_room(username) # Buat room privat untuk user ini
@@ -221,12 +232,16 @@ def handle_connect():
         emit('user_list_update', list(online_users.keys()), broadcast=True)
     else:
         print(f"[SOCKETIO] Koneksi tanpa sesi dari {request.sid}, memutuskan.")
+        # Send an error and disconnect the client if no valid session
         emit('force_logout', {'message': 'Sesi Anda tidak valid. Silakan login kembali.'})
-        return False
+        # Disconnect the client immediately
+        request.sid # This is just to access the sid, the actual disconnect is handled by returning False
+        return False # This stops the connect event from processing further
 
 @socketio.on('disconnect')
 def handle_disconnect():
     username_disconnected = None
+    # Iterate safely by creating a list copy of items
     for user, sid in list(online_users.items()):
         if sid == request.sid:
             username_disconnected = user
@@ -267,12 +282,15 @@ def handle_send_message(data):
                 'timestamp': current_timestamp
             }, room=receiver_username)
             print(f"[SERVER] Meneruskan pesan terenkripsi dari {sender_username} ke {receiver_username} (online).")
+            # Optionally, confirm sending to the sender
             emit('status_message', f"Pesan terkirim ke {receiver_username}.")
         else:
             print(f"[SERVER] Pesan terenkripsi dari {sender_username} ke {receiver_username} disimpan (offline).")
             emit('status_message', f"Pesan disimpan untuk {receiver_username} (offline).")
     else:
         emit('error', f"Pengguna {receiver_username} tidak ditemukan.")
+        emit('status_message', f"Pesan tidak terkirim: Pengguna '{receiver_username}' tidak ditemukan.")
+
 
 # --- NEW: Event handler untuk permintaan riwayat chat ---
 @socketio.on('request_chat_history')
@@ -297,12 +315,18 @@ def handle_request_chat_history(data):
 def handle_request_users():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT username FROM users")
-    all_users = [row[0] for row in cursor.fetchall()]
-    cursor.close()
-    conn.close()
-    emit('all_users_list', all_users)
-    emit('online_users_list', list(online_users.keys()))
+    try:
+        cursor.execute("SELECT username FROM users")
+        all_users = [row[0] for row in cursor.fetchall()]
+        emit('all_users_list', all_users)
+        # Removed redundant emit('online_users_list', list(online_users.keys()))
+        # as user_list_update handles online users already.
+    except mysql.connector.Error as err:
+        print(f"[DB ERROR] Gagal mengambil daftar pengguna: {err}")
+        emit('error', 'Gagal mengambil daftar pengguna.')
+    finally:
+        cursor.close()
+        conn.close()
 
 if __name__ == '__main__':
     print("[*] Memulai server web di http://127.0.0.1:5000")

@@ -23,14 +23,16 @@
         {% if error %}
             <p class="error">{{ error }}</p>
         {% endif %}
-        <form action="/register" method="post">
+        <form action="/register" method="post" id="registrationForm"> {# Tambahkan ID pada form #}
             <input type="text" name="username" placeholder="Username" required>
-            <input type="password" name="password" placeholder="Password" required>
+            <input type="password" name="password" placeholder="Password" id="passwordInput" required> {# Tambahkan ID pada input password #}
             <button type="submit">Daftar</button>
         </form>
         <div class="link">
             Sudah punya akun? <a href="/login">Login di sini</a>
         </div>
     </div>
+
+    <script src="static/js/register.js"></script> {# Tambahkan baris ini untuk menyertakan JavaScript #}
 </body>
 </html>
